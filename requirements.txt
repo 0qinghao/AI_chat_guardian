@@ -1,0 +1,11 @@
+# 核心依赖
+colorama>=0.4.6
+pyyaml>=6.0
+
+# 可选：本地AI模型支持（轻量级）
+transformers>=4.35.0
+torch>=2.0.0
+sentencepiece>=0.1.99
+
+# GUI支持（可选）
+tkinter

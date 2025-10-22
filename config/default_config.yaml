@@ -1,0 +1,51 @@
+# 检测配置
+detection:
+  # 启用的检测模块
+  enable_regex: true        # 正则表达式检测
+  enable_keyword: true      # 关键词检测
+  enable_ai: true           # AI语义检测（需要额外模型，较慢）
+  
+  # 置信度阈值 (0-1)
+  confidence_threshold: 0.7
+
+# 混淆配置
+obfuscation:
+  # 是否保持文本结构
+  preserve_structure: true
+  
+  # 混淆模板
+  email_mask: "***@***.com"
+  phone_mask: "***-****-****"
+  id_card_mask: "******************"
+  generic_mask: "[已隐藏]"
+  
+  # 是否显示类型提示
+  show_type_hint: true  # 例如: [邮箱已隐藏]
+
+# 输出配置
+output:
+  # 是否显示详细信息
+  verbose: true
+  
+  # 是否使用颜色高亮
+  color_highlight: true
+  
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  log_level: "INFO"
+
+# AI模型配置（如果启用AI检测）
+ai_model:
+  # 模型名称（使用轻量级模型）
+  model_name: "bert-base-chinese"
+  
+  # 检测模式: zero-shot(最准确), similarity(最灵活), keyword-enhanced(最快)
+  mode: "zero-shot"
+  
+  # 是否使用GPU
+  use_gpu: false
+  
+  # 批处理大小
+  batch_size: 8
+  
+  # 最大序列长度
+  max_length: 512

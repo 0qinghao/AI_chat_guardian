@@ -10,6 +10,13 @@ from .detectors import RegexDetector, KeywordDetector, AIDetector
 from .obfuscators import Obfuscator
 from .utils import load_config, load_sensitive_keywords
 
+# 尝试导入LLM检测器
+try:
+    from .detectors.llm_detector import LLMDetector
+    LLM_AVAILABLE = True
+except ImportError:
+    LLM_AVAILABLE = False
+
 
 @dataclass
 class GuardianResult:
@@ -25,6 +32,7 @@ class GuardianResult:
 
 class ChatGuardian:
     """AI聊天守护者主类"""
+
     def __init__(self, config_path: str = None, keywords_path: str = None):
         """
         初始化守护者
@@ -71,9 +79,10 @@ class ChatGuardian:
         if detection_config.get('enable_ai', False):
             try:
                 ai_config = self.config.get('ai_model', {})
-                self.ai_detector = AIDetector(model_name=ai_config.get('model_name', 'bert-base-chinese'), use_gpu=ai_config.get('use_gpu', False), mode=ai_config.get('mode', 'keyword-enhanced'))
+                # 使用AI检测器（用于你自己训练的模型）
+                self.ai_detector = AIDetector(model_name=ai_config.get('model_name', 'bert-base-chinese'), use_gpu=ai_config.get('use_gpu', False), mode=ai_config.get('mode', 'zero-shot'))
                 if self.ai_detector.is_available():
-                    self.logger.info(f"AI检测器已启用 (模式: {ai_config.get('mode', 'keyword-enhanced')})")
+                    self.logger.info(f"AI检测器已启用 (模式: {ai_config.get('mode', 'zero-shot')})")
                 else:
                     self.ai_detector = None
                     self.logger.warning("AI检测器初始化失败")
@@ -83,6 +92,27 @@ class ChatGuardian:
         else:
             self.ai_detector = None
             self.logger.info("AI检测器已禁用")
+
+        # LLM检测器（Ollama本地模型）
+        if LLM_AVAILABLE:
+            llm_config = self.config.get('llm_detector', {})
+            if llm_config.get('enable', False):
+                try:
+                    self.llm_detector = LLMDetector(model=llm_config.get('model', 'qwen2:7b'), base_url=llm_config.get('base_url', 'http://localhost:11434'))
+                    if self.llm_detector.is_available():
+                        self.logger.info(f"✓ LLM检测器已启用 (Ollama/{llm_config.get('model', 'qwen2:7b')})")
+                    else:
+                        self.llm_detector = None
+                        self.logger.warning("LLM检测器不可用，请确保Ollama服务已启动")
+                except Exception as e:
+                    self.logger.error(f"LLM检测器初始化出错: {e}")
+                    self.llm_detector = None
+            else:
+                self.llm_detector = None
+                self.logger.info("LLM检测器已禁用")
+        else:
+            self.llm_detector = None
+            self.logger.debug("LLM检测器模块不可用")
 
     def check_text(self, text: str, auto_obfuscate: bool = True) -> GuardianResult:
         """
@@ -134,6 +164,30 @@ class ChatGuardian:
             except Exception as e:
                 self.logger.error(f"AI检测出错: {e}")
                 warnings.append(f"AI检测出错: {str(e)}")
+
+        # 4. LLM检测
+        if self.llm_detector:
+            try:
+                llm_threshold = self.config.get('llm_detector', {}).get('threshold', 0.7)
+                llm_results = self.llm_detector.detect(text, llm_threshold)
+                # 将LLM结果转换为统一格式
+                for llm_match in llm_results:
+                    # 创建一个类似其他检测器的结果对象
+                    class LLMDetection:
+
+                        def __init__(self, match):
+                            self.start = match.start
+                            self.end = match.end
+                            self.confidence = match.confidence
+                            self.category = match.category
+                            self.type = match.category
+                            self.metadata = {'reason': match.reason, 'source': 'llm'}
+
+                    all_detections.append(LLMDetection(llm_match))
+                self.logger.debug(f"LLM检测发现 {len(llm_results)} 处敏感信息")
+            except Exception as e:
+                self.logger.error(f"LLM检测出错: {e}")
+                warnings.append(f"LLM检测出错: {str(e)}")
 
         # 去重和合并
         all_detections = self._merge_detections(all_detections)

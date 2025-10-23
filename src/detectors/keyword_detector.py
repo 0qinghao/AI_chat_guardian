@@ -15,10 +15,21 @@ class KeywordMatch:
     start: int  # 起始位置
     end: int  # 结束位置
     confidence: float  # 置信度
+    context: str = ""  # 上下文（可选）
 
 
 class KeywordDetector:
-    """基于关键词的敏感信息检测器"""
+    """基于关键词的敏感信息检测器（增强版）"""
+
+    # 类别权重配置
+    CATEGORY_WEIGHTS = {
+        'technical': 1.3,  # 技术信息权重最高
+        'strategy': 1.2,  # 战略信息权重较高
+        'financial': 1.0,  # 财务信息标准权重
+        'personnel': 1.0,  # 人事信息标准权重
+        'customer': 0.9,  # 客户信息权重略低
+    }
+
     def __init__(self, keywords_dict: Dict[str, List[str]]):
         """
         初始化关键词检测器
@@ -29,6 +40,7 @@ class KeywordDetector:
         self.logger = logging.getLogger(__name__)
         self.keywords_dict = keywords_dict
         self._build_keyword_index()
+        self._init_context_booster()
 
     def _build_keyword_index(self):
         """构建关键词索引"""
@@ -41,9 +53,19 @@ class KeywordDetector:
 
         self.logger.info(f"已加载 {len(self.keyword_index)} 个敏感关键词")
 
+    def _init_context_booster(self):
+        """初始化上下文增强词（提升置信度的词）"""
+        self.context_boosters = {
+            'financial': ['金额', '元', '万', '亿', '预算', '成本', '收入'],
+            'personnel': ['员工', '名单', '薪资', '工资', '人员'],
+            'strategy': ['机密', '保密', '内部', '秘密', '战略'],
+            'technical': ['密钥', '密码', 'key', 'password', 'secret'],
+            'customer': ['客户', '合同', '订单', '商务'],
+        }
+
     def detect(self, text: str) -> List[KeywordMatch]:
         """
-        检测文本中的敏感关键词
+        检测文本中的敏感关键词（增强版，支持上下文分析和置信度调整）
         
         Args:
             text: 待检测的文本
@@ -62,16 +84,16 @@ class KeywordDetector:
                 if pos == -1:
                     break
 
-                match = KeywordMatch(
-                    keyword=keyword,
-                    category=category,
-                    start=pos,
-                    end=pos + len(keyword),
-                    confidence=0.85  # 关键词匹配置信度固定为0.85
-                )
+                # 获取上下文
+                context = self._get_context(text, pos, len(keyword))
+
+                # 计算动态置信度
+                confidence = self._calculate_confidence(keyword, category, context)
+
+                match = KeywordMatch(keyword=keyword, category=category, start=pos, end=pos + len(keyword), confidence=confidence, context=context)
                 results.append(match)
 
-                self.logger.debug(f"检测到敏感词 [{category}]: {keyword}")
+                self.logger.debug(f"检测到敏感词 [{category}]: {keyword} (置信度: {confidence:.2f})")
                 start = pos + len(keyword)
 
         # 去重和排序
@@ -79,6 +101,43 @@ class KeywordDetector:
         results.sort(key=lambda x: x.start)
 
         return results
+
+    def _get_context(self, text: str, pos: int, length: int, window: int = 20) -> str:
+        """获取关键词的上下文"""
+        start = max(0, pos - window)
+        end = min(len(text), pos + length + window)
+        return text[start:end]
+
+    def _calculate_confidence(self, keyword: str, category: str, context: str) -> float:
+        """
+        计算动态置信度（考虑上下文和类别权重）
+        
+        Args:
+            keyword: 关键词
+            category: 类别
+            context: 上下文
+            
+        Returns:
+            置信度 (0-1)
+        """
+        base_confidence = 0.8  # 基础置信度
+
+        # 应用类别权重
+        weight = self.CATEGORY_WEIGHTS.get(category, 1.0)
+        confidence = base_confidence * weight
+
+        # 上下文增强
+        if category in self.context_boosters:
+            boosters = self.context_boosters[category]
+            context_lower = context.lower()
+            boost_count = sum(1 for booster in boosters if booster in context_lower)
+
+            if boost_count > 0:
+                # 每个增强词提升5%置信度，最多提升15%
+                confidence += min(0.15, boost_count * 0.05)
+
+        # 确保置信度在合理范围内
+        return min(1.0, max(0.6, confidence))
 
     def _deduplicate_matches(self, matches: List[KeywordMatch]) -> List[KeywordMatch]:
         """

@@ -24,6 +24,7 @@ class SemanticMatch:
 
 class AIDetector:
     """基于AI的语义检测器"""
+
     def __init__(self, model_name: str = "bert-base-chinese", use_gpu: bool = False, mode: str = "zero-shot"):
         """
         初始化AI检测器
@@ -104,6 +105,12 @@ class AIDetector:
         try:
             from transformers import pipeline
             import torch
+            import warnings
+
+            # 抑制transformers的警告信息
+            warnings.filterwarnings('ignore', category=UserWarning, module='transformers')
+            import logging as transformers_logging
+            transformers_logging.getLogger("transformers").setLevel(transformers_logging.ERROR)
 
             # 检测设备
             device = 0 if self.use_gpu and torch.cuda.is_available() else -1

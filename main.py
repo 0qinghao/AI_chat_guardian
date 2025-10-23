@@ -4,6 +4,12 @@ AI Chat Guardian - 命令行界面
 import sys
 import argparse
 from pathlib import Path
+import io
+
+# 设置标准输入输出编码为UTF-8
+sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # 添加src到路径
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,9 +45,9 @@ def print_banner():
     """打印欢迎横幅"""
     banner = """
     ╔══════════════════════════════════════════════════╗
-    ║        AI Chat Guardian (AI聊天守护者)            ║
+    ║        AI Chat Guardian (AI聊天守护者)           ║
     ║                                                  ║
-    ║        保护您的敏感信息，安全使用AI工具            ║
+    ║        保护您的敏感信息，安全使用AI工具          ║
     ╚══════════════════════════════════════════════════╝
     """
     print_colored(banner, Fore.CYAN, bright=True)
@@ -210,11 +216,13 @@ def main():
                                      epilog="""
 示例:
   python main.py                          # 交互式模式
+  python main.py -t "文本内容"             # 直接检测文本
   python main.py -f input.txt             # 检测文件
   python main.py -f input.txt -o safe.txt # 检测并保存安全文本
   python main.py -b ./documents           # 批量检测目录
         """)
 
+    parser.add_argument('-t', '--text', help='直接检测文本（用于测试）')
     parser.add_argument('-f', '--file', help='检测文件')
     parser.add_argument('-o', '--output', help='输出文件路径（保存安全文本）')
     parser.add_argument('-b', '--batch', help='批量检测目录')
@@ -247,7 +255,12 @@ def main():
 
     # 根据参数选择模式
     try:
-        if args.file:
+        if args.text:
+            # 直接文本检测模式
+            print_colored("\n正在检测...", Fore.CYAN)
+            result = guardian.check_text(args.text)
+            print_result(result)
+        elif args.file:
             file_mode(guardian, args.file, args.output)
         elif args.batch:
             batch_mode(guardian, args.batch)

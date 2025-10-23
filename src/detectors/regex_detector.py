@@ -19,65 +19,67 @@ class DetectionResult:
 
 
 class RegexDetector:
-    """基于正则表达式的敏感信息检测器"""
+    """基于正则表达式的敏感信息检测器（增强版）"""
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self._init_patterns()
+        self._init_enhanced_patterns()
 
     def _init_patterns(self):
         """初始化正则表达式模式"""
         self.patterns = {
-            # 邮箱地址
+            # 邮箱地址 - 修复中文兼容性
             'email': {
-                'pattern': re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
+                'pattern': re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}'),
                 'confidence': 0.95
             },
 
-            # 中国手机号
+            # 中国手机号 - 修复中文兼容性
             'phone_cn': {
-                'pattern': re.compile(r'\b1[3-9]\d{9}\b'),
+                'pattern': re.compile(r'(?<![0-9])1[3-9]\d{9}(?![0-9])'),
                 'confidence': 0.9
             },
 
             # 固定电话
             'phone_landline': {
-                'pattern': re.compile(r'\b\d{3,4}-\d{7,8}\b'),
+                'pattern': re.compile(r'(?<![0-9])\d{3,4}-\d{7,8}(?![0-9])'),
                 'confidence': 0.85
             },
 
-            # 中国身份证号（18位）
+            # 中国身份证号（18位）- 修复中文兼容性
             'id_card_cn': {
-                'pattern': re.compile(r'\b[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]\b'),
+                'pattern': re.compile(r'(?<![0-9])[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx](?![0-9])'),
                 'confidence': 0.95
             },
 
-            # IPv4地址
+            # IPv4地址 - 修复中文兼容性
             'ipv4': {
-                'pattern': re.compile(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'),
+                'pattern': re.compile(r'(?<![0-9.])(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?![0-9.])'),
                 'confidence': 0.8
             },
 
             # API密钥模式（常见格式）
             'api_key': {
-                'pattern': re.compile(r'\b[A-Za-z0-9]{32,64}\b'),
+                'pattern': re.compile(r'(?<![A-Za-z0-9])[A-Za-z0-9]{32,64}(?![A-Za-z0-9])'),
                 'confidence': 0.6
             },
 
             # JWT Token
             'jwt_token': {
-                'pattern': re.compile(r'\beyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\b'),
+                'pattern': re.compile(r'(?<![A-Za-z0-9_.-])eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?![A-Za-z0-9_.-])'),
                 'confidence': 0.95
             },
 
-            # 信用卡号
+            # 信用卡号 - 修复中文兼容性
             'credit_card': {
-                'pattern': re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'),
+                'pattern': re.compile(r'(?<![0-9])\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}(?![0-9])'),
                 'confidence': 0.7
             },
 
-            # 银行卡号（中国，16-19位）
+            # 银行卡号（中国，16-19位）- 修复中文兼容性
             'bank_card': {
-                'pattern': re.compile(r'\b\d{16,19}\b'),
+                'pattern': re.compile(r'(?<![0-9])\d{16,19}(?![0-9])'),
                 'confidence': 0.65
             },
 
@@ -87,9 +89,9 @@ class RegexDetector:
                 'confidence': 0.9
             },
 
-            # AWS密钥
+            # AWS密钥 - 修复中文兼容性
             'aws_key': {
-                'pattern': re.compile(r'\b(AKIA[0-9A-Z]{16})\b'),
+                'pattern': re.compile(r'(?<![A-Z0-9])(AKIA[0-9A-Z]{16})(?![A-Z0-9])'),
                 'confidence': 0.95
             },
 
@@ -106,9 +108,41 @@ class RegexDetector:
             },
         }
 
+    def _init_enhanced_patterns(self):
+        """初始化增强的语义模式（用于检测含金额、敏感词组合的文本）"""
+        self.enhanced_patterns = {
+            # 财务信息模式
+            'financial': [
+                re.compile(r'(\d+)(万|亿|千万).*?(营收|利润|收入|预算|成本|资金|业绩|销售额)'),
+                re.compile(r'(营收|利润|收入|预算|成本|资金|业绩|销售额).*?(\d+)(万|亿|千万)'),
+                re.compile(r'[¥$€£]\s*\d+'),
+            ],
+            # 人事信息模式
+            'personnel': [
+                re.compile(r'(工资|薪资|薪酬|年薪).*?\d+.*?(万|元)'),
+                re.compile(r'(员工|人员).*?(名单|信息|数据)'),
+            ],
+            # 战略信息模式
+            'strategy': [
+                re.compile(r'(机密|保密|内部|秘密).*?(文件|资料|数据|信息|材料)'),
+                re.compile(r'(战略|计划|规划).*?(目标|方案)'),
+            ],
+            # 技术信息模式
+            'technical': [
+                re.compile(r'(API|api).*?(密钥|key|秘钥)'),
+                re.compile(r'(密码|password|pwd)[:：=]\s*\S+'),
+                re.compile(r'(数据库|服务器|主机).*?(地址|IP|密码|账号)'),
+            ],
+            # 客户信息模式
+            'customer': [
+                re.compile(r'客户.*?(名单|信息|数据|资料)'),
+                re.compile(r'(合同|订单).*?(编号|金额|内容)'),
+            ],
+        }
+
     def detect(self, text: str) -> List[DetectionResult]:
         """
-        检测文本中的敏感信息
+        检测文本中的敏感信息（包括基础模式和增强模式）
         
         Args:
             text: 待检测的文本
@@ -118,6 +152,7 @@ class RegexDetector:
         """
         results = []
 
+        # 1. 基础模式检测（格式化信息）
         for pattern_name, pattern_info in self.patterns.items():
             pattern = pattern_info['pattern']
             confidence = pattern_info['confidence']
@@ -133,9 +168,32 @@ class RegexDetector:
 
                 self.logger.debug(f"检测到 {pattern_name}: {match.group()}")
 
+        # 2. 增强模式检测（语义组合）
+        enhanced_results = self._detect_enhanced_patterns(text)
+        results.extend(enhanced_results)
+
         # 去重和排序
         results = self._deduplicate_results(results)
         results.sort(key=lambda x: x.start)
+
+        return results
+
+    def _detect_enhanced_patterns(self, text: str) -> List[DetectionResult]:
+        """检测增强模式（语义组合）"""
+        results = []
+
+        for category, patterns in self.enhanced_patterns.items():
+            for pattern in patterns:
+                for match in pattern.finditer(text):
+                    result = DetectionResult(
+                        type=category,
+                        content=match.group(),
+                        start=match.start(),
+                        end=match.end(),
+                        confidence=0.9  # 语义组合置信度较高
+                    )
+                    results.append(result)
+                    self.logger.debug(f"增强检测到 {category}: {match.group()}")
 
         return results
 

@@ -88,7 +88,7 @@ class LLMDetector:
 "{text}"
 
 若检测到敏感信息，请严格按照以下JSON格式返回结果：
-{{"detections":[{{"text":"sensitive content","category":"financial"}}]}}
+{{"detections":[{{"text":"sensitive content(必须与原文字符级一致)","category":"financial"}}]}}
 
 若无敏感信息，返回：
 {{"detections":[]}}
@@ -188,20 +188,30 @@ class LLMDetector:
                 if confidence >= threshold:
                     sensitive_text = det.get('text', '')
 
-                    # 在原文中查找位置
-                    start = original_text.find(sensitive_text)
+                    if not sensitive_text:
+                        continue
 
-                    if start != -1:
-                        match = LLMMatch(text=sensitive_text,
-                                         category=det.get('category', 'unknown'),
-                                         start=start,
-                                         end=start + len(sensitive_text),
-                                         confidence=confidence,
-                                         reason=det.get('reason', 'LLM检测'))
+                    # 在原文中查找位置（精确匹配）
+                    start = original_text.find(sensitive_text)
+                    end = start + len(sensitive_text) if start != -1 else -1
+
+                    # 如果直接找不到，尝试模糊匹配
+                    if start == -1:
+                        matched_text, match_start, match_end = self._fuzzy_match(sensitive_text, original_text)
+                        if matched_text:
+                            sensitive_text = matched_text
+                            start = match_start
+                            end = match_end
+                            self.logger.debug(f"使用模糊匹配: '{sensitive_text[:30]}...'")
+
+                    if start != -1 and end != -1:
+                        match = LLMMatch(text=sensitive_text, category=det.get('category', 'unknown'), start=start, end=end, confidence=confidence, reason=det.get('reason', 'LLM检测'))
                         matches.append(match)
 
                         self.logger.debug(f"LLM检测到: [{match.category}] {match.text[:30]}... "
-                                          f"(置信度: {match.confidence:.2f})")
+                                          f"(置信度: {match.confidence:.2f}, 位置: {start}-{end})")
+                    else:
+                        self.logger.warning(f"⚠️ 无法在原文中定位敏感内容: '{sensitive_text[:50]}...'")
 
             return matches
 
@@ -213,6 +223,87 @@ class LLMDetector:
             self.logger.error(f"解析LLM响应失败: {e}")
             self.logger.debug(f"详细错误: {type(e).__name__}: {str(e)}")
             return []
+
+    def _fuzzy_match(self, llm_text: str, original_text: str) -> tuple:
+        """
+        模糊匹配：当LLM输出的文本在原文中找不到时，尝试找到相似的片段
+        
+        策略：
+        1. 提取数字和关键词
+        2. 在原文中查找包含这些关键信息的片段
+        3. 返回最匹配的原文片段
+        
+        Args:
+            llm_text: LLM输出的敏感文本
+            original_text: 原始文本
+            
+        Returns:
+            (匹配的文本, 起始位置, 结束位置) 或 (None, -1, -1)
+        """
+        import re
+
+        # 提取数字（包括金额、百分比等）
+        numbers = re.findall(r'\d+(?:\.\d+)?(?:[万亿千百]|%)?', llm_text)
+
+        # 提取关键中文词（2个字符以上）
+        chinese_words = re.findall(r'[\u4e00-\u9fff]{2,}', llm_text)
+
+        # 提取英文单词（3个字符以上）
+        english_words = re.findall(r'[a-zA-Z]{3,}', llm_text)
+
+        keywords = numbers + chinese_words + english_words
+
+        if not keywords:
+            return None, -1, -1
+
+        # 在原文中查找包含最多关键词的片段
+        best_match = None
+        best_score = 0
+        best_start = -1
+        best_end = -1
+
+        # 使用滑动窗口查找
+        window_size = len(llm_text) + 20  # 稍微放宽一些
+
+        for i in range(len(original_text) - window_size + 1):
+            window = original_text[i:i + window_size]
+
+            # 计算这个窗口包含多少关键词
+            score = sum(1 for kw in keywords if kw in window)
+
+            if score > best_score:
+                best_score = score
+                best_match = window
+                best_start = i
+                best_end = i + window_size
+
+        # 如果找到了包含至少一半关键词的片段，则认为匹配成功
+        if best_score >= len(keywords) / 2:
+            # 优化边界：尝试缩小到更精确的范围
+            if best_match:
+                # 找到第一个关键词的位置
+                first_kw_pos = len(best_match)
+                last_kw_pos = 0
+
+                for kw in keywords:
+                    pos = best_match.find(kw)
+                    if pos != -1:
+                        first_kw_pos = min(first_kw_pos, pos)
+                        last_kw_pos = max(last_kw_pos, pos + len(kw))
+
+                # 稍微扩展边界，包含完整的词
+                margin = 5
+                start_offset = max(0, first_kw_pos - margin)
+                end_offset = min(len(best_match), last_kw_pos + margin)
+
+                optimized_match = best_match[start_offset:end_offset].strip()
+                optimized_start = best_start + start_offset
+                optimized_end = optimized_start + len(optimized_match)
+
+                self.logger.debug(f"模糊匹配成功: 关键词匹配度 {best_score}/{len(keywords)}")
+                return optimized_match, optimized_start, optimized_end
+
+        return None, -1, -1
 
     def is_available(self) -> bool:
         """检查LLM检测器是否可用"""

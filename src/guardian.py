@@ -270,6 +270,8 @@ class ChatGuardian:
             detail = {
                 'type': getattr(detection, 'type', getattr(detection, 'category', 'unknown')),
                 'content': text[detection.start:detection.end],
+                'start': detection.start,
+                'end': detection.end,
                 'position': (detection.start, detection.end),
                 'confidence': getattr(detection, 'confidence', 0.0)
             }

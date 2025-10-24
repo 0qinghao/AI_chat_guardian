@@ -144,13 +144,14 @@ class GuardianGUI:
         tk.Label(llm_frame, text="选择模型:", font=('Microsoft YaHei UI', 10)).pack(side=tk.LEFT, padx=5)
 
         llm_config = self.config.get('llm_detector', {})
-        self.model_var = tk.StringVar(value=llm_config.get('model', 'qwen2:7b'))
-        model_combo = ttk.Combobox(llm_frame,
-                                   textvariable=self.model_var,
-                                   width=22,
-                                   font=('Consolas', 10),
-                                   values=['qwen2:7b', 'qwen2.5:3b', 'qwen2.5:7b', 'qwen2.5:14b', 'llama3:8b', 'mistral:7b', 'gemma:7b'],
-                                   state='readonly')
+        self.model_var = tk.StringVar(value=llm_config.get('model', 'gemma3:1b'))
+
+        # 从配置文件读取可用模型列表
+        available_models = llm_config.get('available_models', ['gemma3:1b', 'qwen2.5:7b'])
+        # 清理模型名称(去除注释)
+        clean_models = [m.split('#')[0].strip() for m in available_models]
+
+        model_combo = ttk.Combobox(llm_frame, textvariable=self.model_var, width=22, font=('Consolas', 10), values=clean_models, state='readonly')
         model_combo.pack(side=tk.LEFT, padx=5)
 
         self.llm_frame = llm_frame
@@ -168,11 +169,7 @@ class GuardianGUI:
 • 关键词：上下文感知的关键词检测
 • AI检测器：需要本地训练模型（已弃用）
 • LLM检测器：使用本地Ollama进行语义理解
-
-推荐配置：
-  快速模式：仅正则（毫秒级）
-  平衡模式：正则 + 关键词（秒级）
-  精确模式：正则 + 关键词 + LLM（3-5秒）"""
+"""
 
         info_label = tk.Label(info_frame, text=info_text, justify=tk.LEFT, font=('Microsoft YaHei UI', 9), fg='#666', bg='#f5f5f5')
         info_label.pack(anchor=tk.W, padx=10, pady=(0, 10))
@@ -385,73 +382,16 @@ class GuardianGUI:
 
     def perform_detection(self, text):
         """执行检测并显示进度"""
-        all_detections = []
+        # 显示检测进度
+        self.root.after(0, lambda: self.progress_label.config(text="🔍 正在检测...", fg='#2196F3'))
 
-        detection_config = self.config.get('detection', {})
-        llm_config = self.config.get('llm_detector', {})
-
-        # 检测正则
-        if detection_config.get('enable_regex', True):
-            self.root.after(0, lambda: self.progress_label.config(text="🔍 正则表达式检测中...", fg='#2196F3'))
-            if hasattr(self.guardian, 'regex_detector') and self.guardian.regex_detector:
-                regex_results = self.guardian.regex_detector.detect(text)
-                # 将DetectionResult对象转换为字典格式
-                for match in regex_results:
-                    all_detections.append({'start': match.start, 'end': match.end, 'type': match.type, 'content': match.content, 'confidence': match.confidence})
-
-        # 检测关键词
-        if detection_config.get('enable_keyword', True):
-            self.root.after(0, lambda: self.progress_label.config(text="🔍 关键词检测中...", fg='#2196F3'))
-            if hasattr(self.guardian, 'keyword_detector') and self.guardian.keyword_detector:
-                keyword_results = self.guardian.keyword_detector.detect(text)
-                # 将KeywordMatch对象转换为字典格式
-                for match in keyword_results:
-                    all_detections.append({'start': match.start, 'end': match.end, 'type': match.category, 'content': match.keyword, 'confidence': match.confidence, 'category': match.category})
-
-        # 检测AI
-        if detection_config.get('enable_ai', False):
-            self.root.after(0, lambda: self.progress_label.config(text="🤖 AI检测中...", fg='#2196F3'))
-            if hasattr(self.guardian, 'ai_detector') and self.guardian.ai_detector:
-                ai_results = self.guardian.ai_detector.detect(text)
-                # 将SemanticMatch对象转换为字典格式
-                for match in ai_results:
-                    all_detections.append({'start': match.start, 'end': match.end, 'type': match.category, 'content': match.text, 'confidence': match.confidence, 'category': match.category})
-
-        # 检测LLM
-        if llm_config.get('enable', False):
-            model = llm_config.get('model', 'qwen2:7b')
-            self.root.after(0, lambda: self.progress_label.config(text=f"🧠 LLM检测中 ({model})...", fg='#9C27B0'))
-            if hasattr(self.guardian, 'llm_detector') and self.guardian.llm_detector:
-                llm_results = self.guardian.llm_detector.detect(text)
-                # 将LLMMatch对象转换为字典格式
-                for match in llm_results:
-                    all_detections.append({'start': match.start, 'end': match.end, 'type': match.category, 'content': match.text, 'confidence': match.confidence, 'category': match.category})
+        # 直接使用guardian的check_text方法，它会处理所有检测器
+        result = self.guardian.check_text(text, auto_obfuscate=True)
 
         # 完成检测
         self.root.after(0, lambda: self.progress_label.config(text="✓ 检测完成", fg='#4CAF50'))
 
-        # 构造结果对象
-        class DetectionResult:
-
-            def __init__(self, detections, text):
-                self.detections = detections
-                self.has_sensitive = len(detections) > 0
-                self.detection_count = len(detections)
-                self.safe_text = self._obfuscate(text, detections)
-
-            def _obfuscate(self, text, detections):
-                if not detections:
-                    return text
-                # 简单混淆
-                result = text
-                for det in sorted(detections, key=lambda x: x.get('start', 0), reverse=True):
-                    start = det.get('start', 0)
-                    end = det.get('end', start)
-                    det_type = det.get('type', '敏感信息')
-                    result = result[:start] + f"[{det_type}已隐藏]" + result[end:]
-                return result
-
-        return DetectionResult(all_detections, text)
+        return result
 
     def handle_error(self, error):
         """处理错误"""
@@ -495,6 +435,17 @@ class GuardianGUI:
                     details += f"    {i}. {content}\n"
                     details += f"       (置信度: {confidence:.1f}%, 位置: {start}-{end})\n"
 
+            # 添加LLM原始输出（用于调试）
+            if hasattr(result, 'llm_raw_response') and result.llm_raw_response:
+                details += f"\n{'='*70}\n"
+                details += "🔍 LLM原始输出 (调试信息):\n"
+                details += f"{'='*70}\n"
+                llm_output = result.llm_raw_response
+                # 限制显示长度，避免界面过长
+                if len(llm_output) > 500:
+                    llm_output = llm_output[:500] + "\n... (输出过长，已截断)"
+                details += f"{llm_output}\n"
+
             self.details_text.insert('1.0', details)
             self.progress_label.config(text=f"⚠️ 检测到 {result.detection_count} 处敏感信息", fg='#f44336')
 
@@ -504,7 +455,20 @@ class GuardianGUI:
 
         else:
             self.progress_label.config(text="✅ 未检测到敏感信息，文本安全", fg='#4CAF50')
-            self.details_text.insert('1.0', "✓ 未检测到敏感信息\n\n文本可以安全使用。")
+            details = "✓ 未检测到敏感信息\n\n文本可以安全使用。"
+
+            # 即使未检测到敏感信息，也显示LLM原始输出（用于调试）
+            if hasattr(result, 'llm_raw_response') and result.llm_raw_response:
+                details += f"\n\n{'='*70}\n"
+                details += "🔍 LLM原始输出 (调试信息):\n"
+                details += f"{'='*70}\n"
+                llm_output = result.llm_raw_response
+                # 限制显示长度
+                if len(llm_output) > 500:
+                    llm_output = llm_output[:500] + "\n... (输出过长，已截断)"
+                details += f"{llm_output}\n"
+
+            self.details_text.insert('1.0', details)
 
             # 仍然启用复制和保存
             self.copy_button.config(state=tk.NORMAL)

@@ -35,6 +35,7 @@ class LLMDetector:
         self.logger = logging.getLogger(__name__)
         self.model = model
         self.base_url = base_url.rstrip('/')
+        self.last_raw_response = ""  # 保存最后一次原始响应，用于调试
 
         self.logger.info(f"初始化LLM检测器: Ollama/{self.model}")
 
@@ -69,21 +70,30 @@ class LLMDetector:
 
     def _build_prompt(self, text: str) -> str:
         """构建检测提示词（英文版：企业防泄密场景 - 平衡版）"""
-        return f"""You are a corporate data leak detector. Identify sensitive info in the text.
+        return f"""你是一个专业的敏感信息检测系统。可识别文本中的敏感信息。
 
-Categories:
-- financial: money, revenue, profit, budget, salary
-- personnel: employee name, ID, phone, email  
-- strategy: confidential projects, business plans
-- technical: passwords, keys, IPs, database URLs
-- customer: client names, contracts, deals
+**敏感信息类别：**
+1. financial（财务信息）：金额、营收、利润、成本、预算等
+2. personnel（人员信息）：员工姓名、薪资、联系方式、人员安排等
+3. strategy（战略信息）：商业计划、战略规划、竞争策略、机密文件等
+4. technical（技术信息）：代码、密钥、密码、系统架构、技术方案等
+5. customer（客户信息）：客户数据、合同信息、订单详情等
 
-Text: "{text}"
+**检测要求：**
+- 如果发现敏感信息，返回JSON格式的结果
+- 每个检测项包含：text（敏感内容）、category（类别）
+- 如果没有敏感信息，返回空数组
 
-JSON format:
-{{"detections":[{{"text":"sensitive content","category":"type"}}]}}
+**待检测文本：**
+"{text}"
 
-Output:"""
+若检测到敏感信息，请严格按照以下JSON格式返回结果：
+{{"detections":[{{"text":"sensitive content","category":"financial"}}]}}
+
+若无敏感信息，返回：
+{{"detections":[]}}
+
+只返回JSON，不要包含其他解释。需严格遵守JSON格式，注意检查括号成对。"""
 
     def _detect_ollama(self, text: str, threshold: float) -> List[LLMMatch]:
         """使用Ollama本地模型检测"""
@@ -105,7 +115,7 @@ Output:"""
                         'temperature': 0.1,  # 低温度，更确定性
                         'top_p': 0.9,  # 降低随机性
                         'num_predict': 512,  # 限制最大输出token（加速）
-                        'stop': ['}}\n\n']  # 只在JSON结束后停止
+                        # 'stop': ['}}\n\n']  # 只在JSON结束后停止
                     }
                 })
 
@@ -113,6 +123,7 @@ Output:"""
 
             # 解析结果
             content = response.json().get('response', '').strip()
+            self.last_raw_response = content  # 保存原始响应
             self.logger.debug(f"LLM原始响应: {content[:200]}...")
             return self._parse_response(content, text, threshold)
 

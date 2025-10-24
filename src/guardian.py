@@ -28,6 +28,7 @@ class GuardianResult:
     detections: List[Dict[str, Any]] = field(default_factory=list)  # 检测详情
     obfuscation_details: List[Dict[str, Any]] = field(default_factory=list)  # 混淆详情
     warnings: List[str] = field(default_factory=list)  # 警告信息
+    llm_raw_response: str = ""  # LLM原始响应（用于调试）
 
 
 class ChatGuardian:
@@ -204,13 +205,19 @@ class ChatGuardian:
         # 构建检测详情
         detection_details = self._build_detection_details(all_detections, text)
 
+        # 获取LLM原始响应（如果使用了LLM检测器）
+        llm_raw_response = ""
+        if self.llm_detector and hasattr(self.llm_detector, 'last_raw_response'):
+            llm_raw_response = self.llm_detector.last_raw_response
+
         result = GuardianResult(original_text=text,
                                 safe_text=safe_text,
                                 has_sensitive=has_sensitive,
                                 detection_count=len(all_detections),
                                 detections=detection_details,
                                 obfuscation_details=obfuscation_details,
-                                warnings=warnings)
+                                warnings=warnings,
+                                llm_raw_response=llm_raw_response)
 
         self.logger.info(f"检测完成，发现 {len(all_detections)} 处敏感信息")
 

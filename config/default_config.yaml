@@ -11,9 +11,18 @@ detection:
   enable_keyword: false
   enable_regex: false
 llm_detector:
+  available_models:
+  - gemma3:4b
+  - gemma3:1b
+  - qwen3:4b
+  - qwen2.5:14b
+  - qwen2.5:7b
+  - qwen2:7b
+  - deepseek-r1:8b
+  - gpt-oss:20b
   base_url: http://localhost:11434
   enable: true
-  model: qwen2.5:7b
+  model: gemma3:4b
   threshold: 0.7
 obfuscation:
   email_mask: '***@***.com'

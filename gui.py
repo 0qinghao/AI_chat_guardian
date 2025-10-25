@@ -541,6 +541,42 @@ class GuardianGUI:
         # 显示安全文本
         self.output_text.insert('1.0', result.safe_text)
 
+        # 高亮混淆的文本
+        if result.has_sensitive and result.obfuscation_details:
+            # 配置tag样式 - 使用醒目的橙红色和加粗
+            self.output_text.tag_config(
+                'obfuscated',
+                foreground='#FF5722',  # 深橙色
+                background='#FFE0B2',  # 浅橙色背景
+                font=('Microsoft YaHei UI', 11, 'bold'))
+
+            # 收集所有混淆文本的位置（避免重复标记）
+            obfuscated_positions = []
+            current_pos = 0
+            safe_text = result.safe_text
+
+            for detail in result.obfuscation_details:
+                obfuscated = detail.get('obfuscated', '')
+                if obfuscated and obfuscated in safe_text[current_pos:]:
+                    # 找到第一个出现的位置
+                    pos = safe_text.find(obfuscated, current_pos)
+                    if pos != -1:
+                        obfuscated_positions.append((pos, pos + len(obfuscated)))
+                        current_pos = pos + len(obfuscated)
+
+            # 应用高亮标记
+            for start, end in obfuscated_positions:
+                # 计算tkinter的行列位置
+                start_line = safe_text[:start].count('\n') + 1
+                start_col = start - safe_text[:start].rfind('\n') - 1
+                end_line = safe_text[:end].count('\n') + 1
+                end_col = end - safe_text[:end].rfind('\n') - 1
+
+                start_idx = f"{start_line}.{start_col}"
+                end_idx = f"{end_line}.{end_col}"
+
+                self.output_text.tag_add('obfuscated', start_idx, end_idx)
+
         # 显示详情
         if result.has_sensitive:
             details = f"🔍 检测结果摘要\n"

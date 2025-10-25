@@ -8,7 +8,7 @@ ai_model:
 detection:
   confidence_threshold: 0.7
   enable_ai: false
-  enable_keyword: true
+  enable_keyword: false
   enable_regex: true
 llm_detector:
   api:

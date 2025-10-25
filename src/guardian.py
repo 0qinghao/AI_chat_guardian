@@ -274,17 +274,47 @@ class ChatGuardian:
         # 按位置排序
         sorted_detections = sorted(detections, key=lambda x: (x.start, -x.confidence))
 
-        # 去除完全重叠的检测
+        # 去除重叠的检测（保留置信度更高或更早的）
         merged = []
         for detection in sorted_detections:
-            is_duplicate = False
-            for existing in merged:
-                # 如果区域完全重叠，保留置信度更高的
-                if (detection.start >= existing.start and detection.end <= existing.end):
-                    is_duplicate = True
-                    break
+            should_add = True
+            for i, existing in enumerate(merged):
+                # 检查是否有任何重叠
+                if not (detection.end <= existing.start or detection.start >= existing.end):
+                    # 有重叠
+                    # 如果新检测被现有检测完全包含，跳过
+                    if detection.start >= existing.start and detection.end <= existing.end:
+                        should_add = False
+                        break
+                    # 如果新检测完全包含现有检测，且置信度更高，替换
+                    elif detection.start <= existing.start and detection.end >= existing.end:
+                        if detection.confidence >= existing.confidence:
+                            merged[i] = detection
+                            should_add = False
+                        else:
+                            should_add = False
+                        break
+                    # 部分重叠：选择置信度更高的，或者选择更长的
+                    else:
+                        # 计算重叠长度
+                        overlap_start = max(detection.start, existing.start)
+                        overlap_end = min(detection.end, existing.end)
+                        overlap_len = overlap_end - overlap_start
 
-            if not is_duplicate:
+                        detection_len = detection.end - detection.start
+                        existing_len = existing.end - existing.start
+
+                        # 如果重叠超过50%，选择置信度更高或更长的
+                        if overlap_len > min(detection_len, existing_len) * 0.5:
+                            if detection.confidence > existing.confidence or \
+                               (detection.confidence == existing.confidence and detection_len > existing_len):
+                                merged[i] = detection
+                                should_add = False
+                            else:
+                                should_add = False
+                            break
+
+            if should_add:
                 merged.append(detection)
 
         return merged

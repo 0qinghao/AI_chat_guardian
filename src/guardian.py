@@ -13,9 +13,17 @@ from .utils import load_config, load_sensitive_keywords
 # 尝试导入LLM检测器
 try:
     from .detectors.llm_detector import LLMDetector
-    LLM_AVAILABLE = True
+    LLM_LOCAL_AVAILABLE = True
 except ImportError:
-    LLM_AVAILABLE = False
+    LLM_LOCAL_AVAILABLE = False
+
+try:
+    from .detectors.llm_detector_api import LLMDetectorAPI
+    LLM_API_AVAILABLE = True
+except ImportError:
+    LLM_API_AVAILABLE = False
+
+LLM_AVAILABLE = LLM_LOCAL_AVAILABLE or LLM_API_AVAILABLE
 
 
 @dataclass
@@ -33,7 +41,6 @@ class GuardianResult:
 
 class ChatGuardian:
     """AI聊天守护者主类"""
-
     def __init__(self, config_path: str = None, keywords_path: str = None):
         """
         初始化守护者
@@ -94,17 +101,46 @@ class ChatGuardian:
             self.ai_detector = None
             self.logger.info("AI检测器已禁用")
 
-        # LLM检测器（Ollama本地模型）
+        # LLM检测器（本地Ollama或在线API）
         if LLM_AVAILABLE:
             llm_config = self.config.get('llm_detector', {})
             if llm_config.get('enable', False):
                 try:
-                    self.llm_detector = LLMDetector(model=llm_config.get('model', 'qwen2:7b'), base_url=llm_config.get('base_url', 'http://localhost:11434'))
-                    if self.llm_detector.is_available():
-                        self.logger.info(f"✓ LLM检测器已启用 (Ollama/{llm_config.get('model', 'qwen2:7b')})")
+                    llm_type = llm_config.get('type', 'local')  # 默认使用本地模式
+
+                    if llm_type == 'api' and LLM_API_AVAILABLE:
+                        # 使用在线API
+                        api_config = llm_config.get('api', {})
+                        self.llm_detector = LLMDetectorAPI(provider=api_config.get('provider', 'zhipu'),
+                                                           api_key=api_config.get('api_key') or None,
+                                                           model=api_config.get('model') or None,
+                                                           base_url=api_config.get('base_url') or None)
+                        if self.llm_detector.is_available():
+                            info = self.llm_detector.get_info()
+                            self.logger.info(f"✓ LLM API检测器已启用 ({info['provider_name']}/{info['model']})")
+                        else:
+                            self.llm_detector = None
+                            self.logger.warning("LLM API检测器不可用，请检查API密钥配置")
+
+                    elif llm_type == 'local' and LLM_LOCAL_AVAILABLE:
+                        # 使用本地Ollama
+                        local_config = llm_config.get('local', {})
+                        self.llm_detector = LLMDetector(model=local_config.get('model', 'qwen2:7b'), base_url=local_config.get('base_url', 'http://localhost:11434'))
+                        if self.llm_detector.is_available():
+                            self.logger.info(f"✓ LLM本地检测器已启用 (Ollama/{local_config.get('model', 'qwen2:7b')})")
+                        else:
+                            self.llm_detector = None
+                            self.logger.warning("LLM本地检测器不可用，请确保Ollama服务已启动")
+
                     else:
                         self.llm_detector = None
-                        self.logger.warning("LLM检测器不可用，请确保Ollama服务已启动")
+                        if llm_type == 'api':
+                            self.logger.warning("LLM API检测器模块不可用")
+                        elif llm_type == 'local':
+                            self.logger.warning("LLM本地检测器模块不可用")
+                        else:
+                            self.logger.warning(f"未知的LLM检测器类型: {llm_type}")
+
                 except Exception as e:
                     self.logger.error(f"LLM检测器初始化出错: {e}")
                     self.llm_detector = None
@@ -175,7 +211,6 @@ class ChatGuardian:
                 for llm_match in llm_results:
                     # 创建一个类似其他检测器的结果对象
                     class LLMDetection:
-
                         def __init__(self, match):
                             self.start = match.start
                             self.end = match.end

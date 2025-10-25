@@ -111,34 +111,31 @@ class Obfuscator:
         # 获取混淆规则
         rule = self.rules.get(detection_type)
 
-        if rule:
-            mask = rule.mask_pattern
-            if rule.show_hint:
-                type_name = self._get_type_name(detection_type)
-                mask = f"[{type_name}已隐藏]"
-        else:
-            # 默认混淆
-            mask = self.config.get('generic_mask', '[已隐藏]')
-            if self.config.get('show_type_hint', True):
-                mask = f"[{detection_type}已隐藏]"
-
-        # 特殊处理：保留部分结构
+        # 特殊处理：保留部分结构以便理解上下文
         if self.config.get('preserve_structure', True):
-            mask = self._preserve_structure(detection_type, original, mask)
+            preserved = self._preserve_structure(detection_type, original)
+            if preserved:
+                return preserved
 
-        return mask
+        # 使用简洁的类型标识
+        if rule or self.config.get('show_type_hint', True):
+            type_name = self._get_type_name(detection_type)
+            # 使用简洁的格式：【类型】而不是[类型已隐藏]
+            return f"【{type_name}】"
 
-    def _preserve_structure(self, detection_type: str, original: str, mask: str) -> str:
+        # 默认混淆
+        return "【隐藏】"
+
+    def _preserve_structure(self, detection_type: str, original: str) -> str:
         """
-        保留部分结构以便理解上下文
+        保留部分结构以便理解上下文（返回None表示不保留结构）
         
         Args:
             detection_type: 检测类型
             original: 原始内容
-            mask: 掩码
         
         Returns:
-            保留结构的掩码
+            保留结构的掩码，或None表示使用默认混淆
         """
         # 邮箱：保留域名后缀
         if detection_type == 'email' and '@' in original:
@@ -146,23 +143,31 @@ class Obfuscator:
             if len(parts) == 2:
                 domain_parts = parts[1].split('.')
                 if len(domain_parts) >= 2:
-                    return f"***@***.{domain_parts[-1]}"
+                    # 保留第一个字符和域名
+                    return f"{original[0]}***@{parts[1]}"
 
         # 手机号：保留前3后4
-        if detection_type in ['phone_cn', 'phone'] and len(original) == 11:
+        if detection_type in ['phone_cn', 'phone'] and len(original) >= 11:
             return f"{original[:3]}****{original[-4:]}"
 
         # 身份证：保留前6后4
         if detection_type == 'id_card_cn' and len(original) == 18:
-            return f"{original[:6]}********{original[-4:]}"
+            return f"{original[:6]}****{original[-4:]}"
 
         # 银行卡：保留后4位
         if detection_type in ['bank_card', 'credit_card']:
             clean_num = original.replace(' ', '').replace('-', '')
             if len(clean_num) >= 4:
-                return f"****-****-****-{clean_num[-4:]}"
+                return f"**** **** **** {clean_num[-4:]}"
 
-        return mask
+        # IP地址：保留第一段
+        if detection_type in ['ipv4', 'ip'] and '.' in original:
+            parts = original.split('.')
+            if len(parts) == 4:
+                return f"{parts[0]}.***.***.***"
+
+        # 对于其他类型，返回None使用默认格式
+        return None
 
     def _get_type_name(self, detection_type: str) -> str:
         """获取类型的中文名称"""

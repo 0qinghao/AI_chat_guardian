@@ -2,6 +2,7 @@
 AI Chat Guardian - 图形用户界面
 """
 import sys
+import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 from pathlib import Path
@@ -11,12 +12,30 @@ import threading
 # 添加src到路径
 sys.path.insert(0, str(Path(__file__).parent))
 
+
+# 加载.env文件到环境变量
+def load_env():
+    """加载.env文件"""
+    env_file = Path(__file__).parent / '.env'
+    if env_file.exists():
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    os.environ[key] = value
+
+
+# 在导入ChatGuardian之前加载环境变量
+load_env()
+
 from src import ChatGuardian, setup_logging
 
 
 class GuardianGUI:
     """AI Chat Guardian GUI应用"""
-
     def __init__(self, root):
         self.root = root
         self.root.title("AI Chat Guardian - AI聊天守护者")
@@ -88,8 +107,15 @@ class GuardianGUI:
         if detection_config.get('enable_ai', False):
             enabled.append("✓AI")
         if llm_config.get('enable', False):
-            llm_model = llm_config.get('model', 'unknown')
-            enabled.append(f"✓LLM({llm_model})")
+            llm_type = llm_config.get('type', 'local')
+            if llm_type == 'api':
+                provider = llm_config.get('api', {}).get('provider', 'unknown')
+                provider_names = {'zhipu': '智谱AI', 'siliconflow': '硅基流动'}
+                provider_display = provider_names.get(provider, provider)
+                enabled.append(f"✓LLM-API({provider_display})")
+            else:
+                llm_model = llm_config.get('local', {}).get('model', 'unknown')
+                enabled.append(f"✓LLM-本地({llm_model})")
 
         if not enabled:
             return "⚠️ 未启用任何检测器"
@@ -102,16 +128,16 @@ class GuardianGUI:
 
         config_win = tk.Toplevel(self.root)
         config_win.title("检测器配置")
-        config_win.geometry("600x700")  # 增加高度到700
-        config_win.resizable(False, False)  # 禁止调整大小，保持布局稳定
+        config_win.geometry("650x850")  # 增加尺寸：宽度650，高度850
+        config_win.resizable(True, True)  # 允许调整大小
         config_win.transient(self.root)
         config_win.grab_set()
 
         # 窗口居中
         config_win.update_idletasks()
-        x = (config_win.winfo_screenwidth() // 2) - (600 // 2)
-        y = (config_win.winfo_screenheight() // 2) - (700 // 2)
-        config_win.geometry(f"600x700+{x}+{y}")  # 标题
+        x = (config_win.winfo_screenwidth() // 2) - (650 // 2)
+        y = (config_win.winfo_screenheight() // 2) - (850 // 2)
+        config_win.geometry(f"650x850+{x}+{y}")  # 标题
         title = tk.Label(config_win, text="⚙️ 检测器配置", font=('Microsoft YaHei UI', 16, 'bold'), fg='#2196F3')
         title.pack(pady=15)
 
@@ -134,31 +160,90 @@ class GuardianGUI:
         tk.Checkbutton(config_frame, text="✓ 关键词检测器 (上下文感知)", variable=self.keyword_var, font=checkbox_font, anchor='w').pack(fill=tk.X, pady=8, padx=5)
         tk.Checkbutton(config_frame, text="✓ AI检测器 (需要模型文件)", variable=self.ai_var, font=checkbox_font, anchor='w').pack(fill=tk.X, pady=8, padx=5)
 
-        llm_check = tk.Checkbutton(config_frame, text="✓ LLM检测器 (Ollama本地大模型)", variable=self.llm_var, font=checkbox_font, anchor='w', command=lambda: self.toggle_llm_options())
+        llm_check = tk.Checkbutton(config_frame, text="✓ LLM检测器 (本地Ollama或在线API)", variable=self.llm_var, font=checkbox_font, anchor='w', command=lambda: self.toggle_llm_options())
         llm_check.pack(fill=tk.X, pady=8, padx=5)
 
-        # LLM模型选择
-        llm_frame = ttk.LabelFrame(config_frame, text="LLM模型配置", padding=10)
+        # LLM配置框架
+        llm_frame = ttk.LabelFrame(config_frame, text="LLM检测器配置", padding=10)
         llm_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Label(llm_frame, text="选择模型:", font=('Microsoft YaHei UI', 10)).pack(side=tk.LEFT, padx=5)
-
+        # 获取LLM配置
         llm_config = self.config.get('llm_detector', {})
-        self.model_var = tk.StringVar(value=llm_config.get('model', 'gemma3:1b'))
+
+        # 第一行：检测器类型选择
+        type_frame = tk.Frame(llm_frame, bg='white')
+        type_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(type_frame, text="检测器类型:", font=('Microsoft YaHei UI', 10), bg='white').pack(side=tk.LEFT, padx=(0, 10))
+
+        self.llm_type_var = tk.StringVar(value=llm_config.get('type', 'api'))
+
+        # 单选按钮
+        tk.Radiobutton(type_frame, text="☁️ 在线API (推荐)", variable=self.llm_type_var, value='api', font=('Microsoft YaHei UI', 10), bg='white',
+                       command=self.update_llm_config_display).pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(type_frame, text="🏠 本地Ollama", variable=self.llm_type_var, value='local', font=('Microsoft YaHei UI', 10), bg='white', command=self.update_llm_config_display).pack(side=tk.LEFT,
+                                                                                                                                                                                           padx=5)
+
+        # 分隔线
+        separator = tk.Frame(llm_frame, height=1, bg='#ddd')
+        separator.pack(fill=tk.X, pady=5)
+
+        # API配置区域
+        self.api_config_frame = tk.Frame(llm_frame, bg='white')
+        self.api_config_frame.pack(fill=tk.X, pady=5)
+
+        # API提供商选择
+        provider_row = tk.Frame(self.api_config_frame, bg='white')
+        provider_row.pack(fill=tk.X, pady=3)
+        tk.Label(provider_row, text="API提供商:", font=('Microsoft YaHei UI', 10), bg='white', width=12, anchor='w').pack(side=tk.LEFT, padx=(0, 5))
+
+        api_config = llm_config.get('api', {})
+        self.api_provider_var = tk.StringVar(value=api_config.get('provider', 'zhipu'))
+
+        provider_options = [('智谱AI (推荐)', 'zhipu'), ('硅基流动', 'siliconflow')]
+
+        provider_combo = ttk.Combobox(provider_row, textvariable=self.api_provider_var, width=18, font=('Microsoft YaHei UI', 9), state='readonly', values=[name for name, _ in provider_options])
+        provider_combo.pack(side=tk.LEFT, padx=5)
+
+        # 绑定选择事件，将显示名称转换为配置值
+        self.provider_display_to_value = {name: value for name, value in provider_options}
+        self.provider_value_to_display = {value: name for name, value in provider_options}
+
+        # 设置初始显示值
+        current_provider = api_config.get('provider', 'zhipu')
+        if current_provider in self.provider_value_to_display:
+            provider_combo.set(self.provider_value_to_display[current_provider])
+
+        # API密钥提示
+        key_row = tk.Frame(self.api_config_frame, bg='white')
+        key_row.pack(fill=tk.X, pady=3)
+        tk.Label(key_row, text="💡 提示:", font=('Microsoft YaHei UI', 9), bg='white', fg='#666').pack(side=tk.LEFT, padx=(0, 5))
+        tk.Label(key_row, text="API密钥请在环境变量中设置 (参考.env.example)", font=('Microsoft YaHei UI', 8), bg='white', fg='#888').pack(side=tk.LEFT)
+
+        # 本地Ollama配置区域
+        self.local_config_frame = tk.Frame(llm_frame, bg='white')
+        self.local_config_frame.pack(fill=tk.X, pady=5)
+
+        model_row = tk.Frame(self.local_config_frame, bg='white')
+        model_row.pack(fill=tk.X, pady=3)
+        tk.Label(model_row, text="本地模型:", font=('Microsoft YaHei UI', 10), bg='white', width=12, anchor='w').pack(side=tk.LEFT, padx=(0, 5))
+
+        local_config = llm_config.get('local', {})
+        self.local_model_var = tk.StringVar(value=local_config.get('model', 'qwen2:7b'))
 
         # 从配置文件读取可用模型列表
-        available_models = llm_config.get('available_models', ['gemma3:1b', 'qwen2.5:7b'])
-        # 清理模型名称(去除注释)
+        available_models = local_config.get('available_models', ['qwen2:7b', 'gemma3:4b'])
         clean_models = [m.split('#')[0].strip() for m in available_models]
 
-        model_combo = ttk.Combobox(llm_frame, textvariable=self.model_var, width=22, font=('Consolas', 10), values=clean_models, state='readonly')
-        model_combo.pack(side=tk.LEFT, padx=5)
+        local_model_combo = ttk.Combobox(model_row, textvariable=self.local_model_var, width=18, font=('Consolas', 9), values=clean_models, state='readonly')
+        local_model_combo.pack(side=tk.LEFT, padx=5)
 
         self.llm_frame = llm_frame
+        self.update_llm_config_display()
         self.toggle_llm_options()
 
         # 说明文字区域 - 限制高度
-        info_frame = tk.Frame(config_win, bg='#f5f5f5', relief=tk.FLAT, height=180)
+        info_frame = tk.Frame(config_win, bg='#f5f5f5', relief=tk.FLAT, height=200)
         info_frame.pack(fill=tk.X, padx=20, pady=10)
         info_frame.pack_propagate(False)  # 防止内容撑大frame
 
@@ -168,7 +253,9 @@ class GuardianGUI:
         info_text = """• 正则表达式：快速模式匹配，适合标准格式（邮箱、电话等）
 • 关键词：上下文感知的关键词检测
 • AI检测器：需要本地训练模型（已弃用）
-• LLM检测器：使用本地Ollama进行语义理解
+• LLM检测器：
+  - API模式：使用在线API（智谱AI、硅基流动等），速度快
+  - 本地模式：使用本地Ollama，完全隐私保护
 """
 
         info_label = tk.Label(info_frame, text=info_text, justify=tk.LEFT, font=('Microsoft YaHei UI', 9), fg='#666', bg='#f5f5f5')
@@ -195,8 +282,26 @@ class GuardianGUI:
             # 更新LLM配置
             if 'llm_detector' not in self.config:
                 self.config['llm_detector'] = {}
+
             self.config['llm_detector']['enable'] = self.llm_var.get()
-            self.config['llm_detector']['model'] = self.model_var.get()
+            self.config['llm_detector']['type'] = self.llm_type_var.get()
+
+            # 根据类型更新对应的配置
+            if self.llm_type_var.get() == 'api':
+                # 更新API配置
+                if 'api' not in self.config['llm_detector']:
+                    self.config['llm_detector']['api'] = {}
+
+                # 从显示名称获取配置值
+                provider_display = self.api_provider_var.get()
+                provider_value = self.provider_display_to_value.get(provider_display, 'zhipu')
+                self.config['llm_detector']['api']['provider'] = provider_value
+
+            else:  # local
+                # 更新本地配置
+                if 'local' not in self.config['llm_detector']:
+                    self.config['llm_detector']['local'] = {}
+                self.config['llm_detector']['local']['model'] = self.local_model_var.get()
 
             # 保存并重载
             if self.save_config():
@@ -235,13 +340,41 @@ class GuardianGUI:
                   cursor='hand2',
                   activebackground='#da190b').pack(side=tk.LEFT, padx=8)
 
+    def update_llm_config_display(self):
+        """根据选择的LLM类型更新配置显示"""
+        if hasattr(self, 'api_config_frame') and hasattr(self, 'local_config_frame'):
+            llm_type = self.llm_type_var.get()
+
+            # 显示/隐藏对应的配置区域
+            if llm_type == 'api':
+                self.api_config_frame.pack(fill=tk.X, pady=5)
+                self.local_config_frame.pack_forget()
+            else:  # local
+                self.api_config_frame.pack_forget()
+                self.local_config_frame.pack(fill=tk.X, pady=5)
+
     def toggle_llm_options(self):
         """切换LLM选项的可用状态"""
         if hasattr(self, 'llm_frame'):
             state = 'normal' if self.llm_var.get() else 'disabled'
-            for child in self.llm_frame.winfo_children():
-                if isinstance(child, (ttk.Combobox, tk.Label)):
-                    child.configure(state=state if isinstance(child, ttk.Combobox) else 'normal')
+
+            # 递归设置所有子组件状态
+            def set_state(widget):
+                try:
+                    if isinstance(widget, (ttk.Combobox, tk.Radiobutton)):
+                        widget.configure(state=state)
+                    elif isinstance(widget, tk.Label):
+                        # 标签保持正常状态，只是颜色变化
+                        fg_color = 'black' if state == 'normal' else '#999'
+                        widget.configure(fg=fg_color)
+                except:
+                    pass
+
+                # 递归处理子组件
+                for child in widget.winfo_children():
+                    set_state(child)
+
+            set_state(self.llm_frame)
 
     def setup_ui(self):
         """设置UI"""
@@ -298,7 +431,7 @@ class GuardianGUI:
         input_label = tk.Label(left_frame, text="📝 输入文本（粘贴待检测内容）", font=('Microsoft YaHei UI', 11, 'bold'), fg='#333')
         input_label.pack(anchor=tk.W, pady=(0, 5))
 
-        self.input_text = scrolledtext.ScrolledText(left_frame, width=45, height=22, wrap=tk.WORD, font=('Consolas', 10), relief=tk.SOLID, bd=1)
+        self.input_text = scrolledtext.ScrolledText(left_frame, width=45, height=22, wrap=tk.WORD, font=('Microsoft YaHei UI', 11), relief=tk.SOLID, bd=1)
         self.input_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # 按钮区域
@@ -323,7 +456,7 @@ class GuardianGUI:
         output_label = tk.Label(right_frame, text="✅ 安全文本（已混淆）", font=('Microsoft YaHei UI', 11, 'bold'), fg='#333')
         output_label.pack(anchor=tk.W, pady=(0, 5))
 
-        self.output_text = scrolledtext.ScrolledText(right_frame, width=45, height=22, wrap=tk.WORD, font=('Consolas', 10), bg='#f0f8ff', relief=tk.SOLID, bd=1)
+        self.output_text = scrolledtext.ScrolledText(right_frame, width=45, height=22, wrap=tk.WORD, font=('Microsoft YaHei UI', 11), bg='#f0f8ff', relief=tk.SOLID, bd=1)
         self.output_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # 输出按钮区域
@@ -353,7 +486,7 @@ class GuardianGUI:
         details_label = tk.Label(bottom_frame, text="📊 检测详情", font=('Microsoft YaHei UI', 11, 'bold'), bg='white', fg='#333')
         details_label.pack(anchor=tk.W, pady=(0, 5))
 
-        self.details_text = scrolledtext.ScrolledText(bottom_frame, height=9, wrap=tk.WORD, font=('Consolas', 9), bg='#fffaf0', relief=tk.SOLID, bd=1)
+        self.details_text = scrolledtext.ScrolledText(bottom_frame, height=9, wrap=tk.WORD, font=('Microsoft YaHei UI', 10), bg='#fffaf0', relief=tk.SOLID, bd=1)
         self.details_text.pack(fill=tk.BOTH, expand=True)
 
     def check_text(self):
@@ -410,9 +543,9 @@ class GuardianGUI:
 
         # 显示详情
         if result.has_sensitive:
-            details = f"检测结果摘要：\n"
-            details += f"{'='*70}\n"
-            details += f"敏感信息数量: {result.detection_count}\n\n"
+            details = f"🔍 检测结果摘要\n"
+            details += f"{'━'*60}\n\n"
+            details += f"📌 敏感信息数量: {result.detection_count} 处\n\n"
 
             # 按类型分组
             type_groups = {}
@@ -422,29 +555,29 @@ class GuardianGUI:
                     type_groups[det_type] = []
                 type_groups[det_type].append(detection)
 
-            details += "按类型统计：\n"
+            details += "📊 按类型统计:\n\n"
+
+            # 类型图标映射
+            type_icons = {'pii': '👤', 'financial': '💰', 'technical': '🔑', 'company': '🏢', 'contact': '📞', 'location': '📍', 'credential': '🔐', 'custom': '⚙️'}
+
             for det_type, detections in type_groups.items():
-                details += f"\n  [{det_type}] 共 {len(detections)} 处:\n"
+                icon = type_icons.get(det_type, '📋')
+                details += f"{icon} [{det_type}] 共 {len(detections)} 处:\n"
+                details += f"{'─'*58}\n"
+
                 for i, det in enumerate(detections, 1):
                     content = det.get('content', '')
-                    if len(content) > 50:
-                        content = content[:50] + "..."
+                    # 截断过长内容
+                    if len(content) > 40:
+                        content = content[:40] + "..."
                     confidence = det.get('confidence', 0) * 100
                     start = det.get('start', 0)
                     end = det.get('end', start)
-                    details += f"    {i}. {content}\n"
-                    details += f"       (置信度: {confidence:.1f}%, 位置: {start}-{end})\n"
 
-            # 添加LLM原始输出（用于调试）
-            if hasattr(result, 'llm_raw_response') and result.llm_raw_response:
-                details += f"\n{'='*70}\n"
-                details += "🔍 LLM原始输出 (调试信息):\n"
-                details += f"{'='*70}\n"
-                llm_output = result.llm_raw_response
-                # 限制显示长度，避免界面过长
-                if len(llm_output) > 500:
-                    llm_output = llm_output[:500] + "\n... (输出过长，已截断)"
-                details += f"{llm_output}\n"
+                    details += f"  {i}. {content}\n"
+                    details += f"     • 置信度: {confidence:.1f}%  • 位置: {start}-{end}\n"
+
+                details += "\n"
 
             self.details_text.insert('1.0', details)
             self.progress_label.config(text=f"⚠️ 检测到 {result.detection_count} 处敏感信息", fg='#f44336')
@@ -455,18 +588,9 @@ class GuardianGUI:
 
         else:
             self.progress_label.config(text="✅ 未检测到敏感信息，文本安全", fg='#4CAF50')
-            details = "✓ 未检测到敏感信息\n\n文本可以安全使用。"
-
-            # 即使未检测到敏感信息，也显示LLM原始输出（用于调试）
-            if hasattr(result, 'llm_raw_response') and result.llm_raw_response:
-                details += f"\n\n{'='*70}\n"
-                details += "🔍 LLM原始输出 (调试信息):\n"
-                details += f"{'='*70}\n"
-                llm_output = result.llm_raw_response
-                # 限制显示长度
-                if len(llm_output) > 500:
-                    llm_output = llm_output[:500] + "\n... (输出过长，已截断)"
-                details += f"{llm_output}\n"
+            details = "✅ 未检测到敏感信息\n\n"
+            details += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            details += "您的文本是安全的，可以放心使用。"
 
             self.details_text.insert('1.0', details)
 

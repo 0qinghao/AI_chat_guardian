@@ -8,22 +8,28 @@ ai_model:
 detection:
   confidence_threshold: 0.7
   enable_ai: false
-  enable_keyword: false
-  enable_regex: false
+  enable_keyword: true
+  enable_regex: true
 llm_detector:
-  available_models:
-  - gemma3:4b
-  - gemma3:1b
-  - qwen3:4b
-  - qwen2.5:14b
-  - qwen2.5:7b
-  - qwen2:7b
-  - deepseek-r1:8b
-  - gpt-oss:20b
-  base_url: http://localhost:11434
+  api:
+    api_key: ''
+    base_url: ''
+    model: ''
+    provider: zhipu
   enable: true
-  model: gemma3:4b
+  local:
+    available_models:
+    - gemma3:4b
+    - gemma3:1b
+    - qwen3:4b
+    - qwen2.5:14b
+    - qwen2.5:7b
+    - qwen2:7b
+    - gpt-oss:20b
+    base_url: http://localhost:11434
+    model: gemma3:4b
   threshold: 0.7
+  type: api
 obfuscation:
   email_mask: '***@***.com'
   generic_mask: '[已隐藏]'

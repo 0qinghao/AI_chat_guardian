@@ -7,29 +7,21 @@ ai_model:
   use_gpu: false
 detection:
   confidence_threshold: 0.7
-  enable_ai: false
-  enable_keyword: false
-  enable_regex: true
+  enable_ai: false       # 本地AI模型检测器（需要训练的模型）
+  enable_keyword: true   # 关键词检测器
+  enable_regex: true     # 正则表达式检测器
 llm_detector:
+  enable: true           # 启用LLM检测器
+  type: api              # 使用API模式（api=在线API, local=本地Ollama）
+  threshold: 0.7
   api:
-    api_key: ''
-    base_url: ''
-    model: ''
-    provider: zhipu
-  enable: true
+    provider: zhipu      # 提供商：zhipu（智谱AI）或 siliconflow（硅基流动）
+    api_key: ''          # API密钥（从.env文件读取）
+    model: ''            # 留空使用默认模型
+    base_url: ''         # 留空使用默认URL
   local:
-    available_models:
-    - gemma3:4b
-    - gemma3:1b
-    - qwen3:4b
-    - qwen2.5:14b
-    - qwen2.5:7b
-    - qwen2:7b
-    - gpt-oss:20b
     base_url: http://localhost:11434
     model: gemma3:4b
-  threshold: 0.7
-  type: api
 obfuscation:
   email_mask: '***@***.com'
   generic_mask: '[已隐藏]'

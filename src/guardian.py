@@ -117,7 +117,7 @@ class ChatGuardian:
                                                            base_url=api_config.get('base_url') or None)
                         if self.llm_detector.is_available():
                             info = self.llm_detector.get_info()
-                            self.logger.info(f"✓ LLM API检测器已启用 ({info['provider_name']}/{info['model']})")
+                            self.logger.info(f"LLM API检测器已启用 ({info['provider_name']}/{info['model']})")
                         else:
                             self.llm_detector = None
                             self.logger.warning("LLM API检测器不可用，请检查API密钥配置")

@@ -15,8 +15,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # 加载.env文件到环境变量
 def load_env():
-    """加载.env文件"""
-    env_file = Path(__file__).parent / '.env'
+    """加载.env文件，支持打包环境"""
+    if getattr(sys, 'frozen', False):
+        # 打包后环境：从exe同目录加载
+        env_file = Path(sys.executable).parent / '.env'
+    else:
+        # 开发环境
+        env_file = Path(__file__).parent / '.env'
+
     if env_file.exists():
         with open(env_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -26,6 +32,9 @@ def load_env():
                     key = key.strip()
                     value = value.strip().strip('"').strip("'")
                     os.environ[key] = value
+    else:
+        # 如果没有.env文件，提示用户
+        pass  # 稍后在GUI中提示
 
 
 # 在导入ChatGuardian之前加载环境变量

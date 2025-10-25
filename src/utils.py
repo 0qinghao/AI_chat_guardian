@@ -3,6 +3,7 @@
 提供配置加载、日志记录等辅助功能
 """
 import os
+import sys
 import yaml
 import logging
 from pathlib import Path
@@ -10,8 +11,17 @@ from typing import Dict, Any
 
 
 def get_project_root() -> Path:
-    """获取项目根目录"""
-    return Path(__file__).parent.parent
+    """获取项目根目录，支持打包后的环境"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的环境
+        # sys._MEIPASS 指向 _internal 目录
+        if hasattr(sys, '_MEIPASS'):
+            return Path(sys._MEIPASS)
+        # 备用：使用可执行文件所在目录
+        return Path(sys.executable).parent
+    else:
+        # 开发环境
+        return Path(__file__).parent.parent
 
 
 def load_config(config_path: str = None) -> Dict[str, Any]:
@@ -25,7 +35,17 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
         配置字典
     """
     if config_path is None:
-        config_path = get_project_root() / "config" / "default_config.yaml"
+        if getattr(sys, 'frozen', False):
+            # 打包后的环境：优先从exe同目录查找
+            exe_dir = Path(sys.executable).parent
+            config_path = exe_dir / "config" / "default_config.yaml"
+
+            # 如果exe同目录没有，尝试_internal目录
+            if not config_path.exists():
+                config_path = Path(sys._MEIPASS) / "config" / "default_config.yaml"
+        else:
+            # 开发环境
+            config_path = get_project_root() / "config" / "default_config.yaml"
 
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -47,7 +67,17 @@ def load_sensitive_keywords(keywords_path: str = None) -> Dict[str, list]:
         关键词字典
     """
     if keywords_path is None:
-        keywords_path = get_project_root() / "config" / "sensitive_keywords.yaml"
+        if getattr(sys, 'frozen', False):
+            # 打包后的环境：优先从exe同目录查找
+            exe_dir = Path(sys.executable).parent
+            keywords_path = exe_dir / "config" / "sensitive_keywords.yaml"
+
+            # 如果exe同目录没有，尝试_internal目录
+            if not keywords_path.exists():
+                keywords_path = Path(sys._MEIPASS) / "config" / "sensitive_keywords.yaml"
+        else:
+            # 开发环境
+            keywords_path = get_project_root() / "config" / "sensitive_keywords.yaml"
 
     try:
         with open(keywords_path, 'r', encoding='utf-8') as f:

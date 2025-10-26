@@ -415,5 +415,4 @@ class LLMDetectorAPI:
             'has_api_key': bool(self.api_key)
         }
 
-
     print("\n" + "=" * 60)

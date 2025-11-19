@@ -112,29 +112,31 @@ If sensitive found, reply ONE line per item:
 | LLMDetector | 本地语义识别 | 识别隐形 / 非格式化 / 跨句潜在敏感信息 |
 | AIDetector（可选） | 轻量语义补充 | 安装依赖后可启用零样本或相似度；未启用不影响主流程 |
 | Obfuscator | 脱敏处理 | 保留结构，替换部分字符，便于继续业务使用 |
+| Web服务器（Flask） | 内网部署 | 提供REST API和Web界面，支持多用户访问，实时配置检测器，适合团队协作 |
+| 桌面GUI（Tkinter） | 本地使用 | 独立桌面应用，无需服务器，适合个人使用和离线环境 |
 | 配置（YAML） | 策略调优 | 启用/禁用模块、阈值、类别与关键词扩展 |
 
 # 6. 使用演示
 
 - 输入待检测文本
 
-![assets/输入.jpg](assets/输入.jpg)
+![assets/输入.jpg](assets/输入web.jpg)
 
 - 泄密代码检测结果
 
-![assets/代码检测.jpg](assets/代码检测.jpg)
+![assets/代码检测.jpg](assets/代码检测web.jpg)
 
 - 财务信息检测结果
 
-![assets/财务检测.jpg](assets/财务检测.jpg)
+![assets/财务检测.jpg](assets/财务检测web.jpg)
 
 - 不含敏感信息的返回结果
 
-![assets/检测安全.jpg](assets/检测安全.jpg)
+![assets/检测安全.jpg](assets/检测安全web.jpg)
 
 - 查看检测详情
 
-![assets/检测详情.jpg](assets/检测详情.jpg)
+![assets/检测详情.jpg](assets/检测详情web.jpg)
 
 # 7. 后续可扩展方向
 

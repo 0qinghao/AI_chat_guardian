@@ -3,6 +3,10 @@ colorama>=0.4.6
 pyyaml>=6.0
 requests>=2.31.0
 
+# Web dependencies  
+flask>=3.0.0
+flask-cors>=4.0.0
+
 # Optional: AI model support
 transformers>=4.35.0
 torch>=2.0.0

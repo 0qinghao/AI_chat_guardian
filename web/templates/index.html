@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Guardian - 敏感信息检测系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <header class="header">
+        <div class="container">
+            <h1>🛡️ AI Chat Guardian</h1>
+            <p class="subtitle">企业级敏感信息检测与保护系统</p>
+            <div class="status-bar">
+                <span id="status-indicator" class="status-badge">正在连接...</span>
+                <span id="llm-model" class="model-badge"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="container main-content">
+        <!-- 输入区域 -->
+        <section class="input-section">
+            <h2>📝 输入文本</h2>
+            <textarea 
+                id="input-text" 
+                class="text-input" 
+                placeholder="在此输入需要检测的文本内容...&#10;&#10;💡 提示：点击「🎲 随机示例」按钮加载不同场景的示例文本：&#10;• 代码泄密（密码、API密钥）&#10;• 财务数据（营收、利润）&#10;• 客户信息（姓名、电话、身份证）&#10;• 技术配置（服务器、数据库）&#10;• 商业机密（战略、定价）&#10;• 还有更多..."
+                rows="10"
+            ></textarea>
+            
+            <!-- 操作按钮 -->
+            <div class="button-group">
+                <button id="check-btn" class="btn btn-primary">
+                    <span class="btn-icon">🔍</span>
+                    <span class="btn-text">检测并混淆</span>
+                </button>
+                <button id="clear-btn" class="btn btn-secondary">
+                    <span class="btn-icon">🗑️</span>
+                    <span class="btn-text">清空</span>
+                </button>
+                <button id="demo-btn" class="btn btn-secondary">
+                    <span class="btn-icon">🎲</span>
+                    <span class="btn-text">随机示例</span>
+                </button>
+                <button id="config-btn" class="btn btn-secondary">
+                    <span class="btn-icon">⚙️</span>
+                    <span class="btn-text">检测器配置</span>
+                </button>
+            </div>
+
+            <!-- 进度提示 -->
+            <div id="progress" class="progress-bar" style="display: none;">
+                <div class="progress-fill"></div>
+                <span class="progress-text">正在检测中...</span>
+            </div>
+        </section>
+
+        <!-- 结果区域 -->
+        <section class="results-section" id="results-section" style="display: none;">
+            <div class="results-grid">
+                <!-- 混淆后文本 -->
+                <div class="result-card">
+                    <h3>✅ 安全文本</h3>
+                    <div class="result-box">
+                        <pre id="safe-text" class="safe-text"></pre>
+                    </div>
+                    <div class="card-actions">
+                        <button id="copy-btn" class="btn btn-small btn-success">
+                            <span class="btn-icon">📋</span> 复制
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 检测详情 -->
+                <div class="result-card">
+                    <h3>📊 检测详情</h3>
+                    <div class="result-box">
+                        <div id="detection-summary" class="detection-summary"></div>
+                        <div id="detection-details" class="detection-details"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LLM原始输出 (调试信息) -->
+            <div class="debug-section" id="debug-section" style="display: none;">
+                <div class="result-card">
+                    <h3>🔍 LLM原始输出 (调试)</h3>
+                    <div class="result-box">
+                        <pre id="llm-output" class="llm-output"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 配置面板（模态框） -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ 检测器配置</h2>
+                <span class="modal-close" onclick="closeConfigModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- 基础检测器配置 -->
+                <div class="config-section">
+                    <h3>基础检测器</h3>
+                    <div class="config-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enable-regex" class="config-checkbox">
+                            <span class="checkbox-text">✓ 正则表达式检测器 (快速)</span>
+                        </label>
+                        <p class="config-desc">快速模式匹配，适合检测标准格式（邮箱、电话、身份证等）</p>
+                    </div>
+                    <div class="config-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enable-keyword" class="config-checkbox">
+                            <span class="checkbox-text">✓ 关键词检测器 (上下文感知)</span>
+                        </label>
+                        <p class="config-desc">基于预定义关键词列表的上下文感知检测</p>
+                    </div>
+                    <div class="config-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enable-ai" class="config-checkbox">
+                            <span class="checkbox-text">✓ AI检测器 (需要模型文件)</span>
+                        </label>
+                        <p class="config-desc">使用本地训练的AI模型进行检测（已弃用）</p>
+                    </div>
+                </div>
+
+                <!-- LLM检测器配置 -->
+                <div class="config-section">
+                    <h3>LLM检测器</h3>
+                    <div class="config-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enable-llm" class="config-checkbox" onchange="toggleLLMConfig()">
+                            <span class="checkbox-text">✓ LLM检测器 (本地Ollama或在线API)</span>
+                        </label>
+                        <p class="config-desc">使用大语言模型进行智能检测，更准确但速度较慢</p>
+                    </div>
+
+                    <!-- LLM详细配置 -->
+                    <div id="llm-config-panel" class="llm-config-panel" style="display: none;">
+                        <div class="config-group">
+                            <label class="config-label">检测器类型:</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="llm-type" value="api" checked onchange="updateLLMTypeDisplay()">
+                                    <span>☁️ 在线API (推荐)</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="llm-type" value="local" onchange="updateLLMTypeDisplay()">
+                                    <span>🏠 本地Ollama</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- API配置 -->
+                        <div id="api-config" class="sub-config">
+                            <div class="config-group">
+                                <label class="config-label">API提供商:</label>
+                                <select id="api-provider" class="config-select">
+                                    <option value="zhipu">智谱AI (推荐)</option>
+                                    <option value="siliconflow">硅基流动</option>
+                                </select>
+                            </div>
+                            <div class="config-info">
+                                💡 提示: API密钥请在服务器的环境变量或.env文件中配置
+                            </div>
+                        </div>
+
+                        <!-- 本地Ollama配置 -->
+                        <div id="local-config" class="sub-config" style="display: none;">
+                            <div class="config-group">
+                                <label class="config-label">本地模型:</label>
+                                <select id="local-model" class="config-select">
+                                    <option value="gemma3:1b">gemma3:1b (推荐，最快)</option>
+                                    <option value="gemma3:4b">gemma3:4b</option>
+                                    <option value="qwen2:7b">qwen2:7b</option>
+                                    <option value="qwen2.5:7b">qwen2.5:7b</option>
+                                </select>
+                            </div>
+                            <div class="config-info">
+                                💡 提示: 需要确保Ollama服务已启动，且模型已下载
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 说明文字 -->
+                <div class="config-info-box">
+                    <h4>📖 检测方案说明</h4>
+                    <ul>
+                        <li><strong>正则表达式</strong>: 快速检测标准格式，如邮箱、电话、身份证等</li>
+                        <li><strong>关键词</strong>: 基于预定义词表的上下文感知检测</li>
+                        <li><strong>AI检测器</strong>: 使用本地BERT模型（需要训练，已弃用）</li>
+                        <li><strong>LLM-API</strong>: 使用在线API（智谱AI、硅基流动），速度快，需要网络</li>
+                        <li><strong>LLM-本地</strong>: 使用本地Ollama，完全隐私保护，无需联网</li>
+                    </ul>
+                </div>
+
+                <!-- 当前状态显示 -->
+                <div class="config-status">
+                    <h4>📊 当前检测器状态</h4>
+                    <div id="detector-status" class="status-grid">
+                        <div class="status-item">
+                            <span class="status-label">正则检测器:</span>
+                            <span id="status-regex" class="status-value">加载中...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">关键词检测器:</span>
+                            <span id="status-keyword" class="status-value">加载中...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">AI检测器:</span>
+                            <span id="status-ai" class="status-value">加载中...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">LLM检测器:</span>
+                            <span id="status-llm" class="status-value">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveConfig()">
+                    <span class="btn-icon">💾</span> 保存并应用
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 AI Chat Guardian | 内网测试版</p>
+            <p class="footer-links">
+                <a href="#" onclick="showHelp(); return false;">使用帮助</a> |
+                <a href="#" onclick="showAbout(); return false;">关于系统</a> |
+                <a href="#" onclick="toggleDebug(); return false;">调试模式</a>
+            </p>
+        </div>
+    </footer>
+
+    <!-- 加载JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
